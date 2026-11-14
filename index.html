@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECHO 谣言与情绪传播分析</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="brand"><span class="logo">ECHO</span><span class="tag">情绪传染图网络 · 在线分析</span></div>
+    <h1>输入一段帖子和它下面的回复，<br>看看它像不像谣言，以及情绪是怎么传开的。</h1>
+    <p class="sub">全部计算在你的浏览器里完成，内容不会上传到任何服务器。第一次使用需要下载模型（约 200 MB），之后会缓存，打开就能用。</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card" id="input-card">
+    <div class="card-head">
+      <h2><span class="step">1</span>填写对话</h2>
+      <div class="quick">
+        <button class="ghost" data-example="rumour">示例：像谣言</button>
+        <button class="ghost" data-example="news">示例：正常新闻</button>
+        <label class="ghost file-btn">导入 JSON<input type="file" id="json-file" accept=".json,application/json" hidden></label>
+        <button class="ghost danger" id="clear-btn">清空</button>
+      </div>
+    </div>
+
+    <div class="post source">
+      <div class="post-label"><span class="badge src">原帖</span><span class="hint">最先发出的那条帖子</span></div>
+      <textarea id="source-text" rows="3" placeholder="例如：BREAKING: reports say the central bridge has collapsed..."></textarea>
+      <details class="extra">
+        <summary>发帖账号信息（可选，不填也能分析）</summary>
+        <div class="extra-grid">
+          <label>粉丝数<input type="number" min="0" id="src-followers" placeholder="例如 1200"></label>
+          <label>账号注册了多少天<input type="number" min="0" id="src-age" placeholder="例如 400"></label>
+          <label class="check"><input type="checkbox" id="src-verified"> 已认证账号（蓝 V）</label>
+          <label class="check"><input type="checkbox" id="src-media"> 帖子带图片或视频</label>
+        </div>
+      </details>
+    </div>
+
+    <div id="replies"></div>
+    <button class="add" id="add-reply">＋ 添加一条回复</button>
+
+    <div class="options">
+      <label class="switch"><input type="checkbox" id="is-chinese"><span class="slider"></span>
+        <span>内容是中文<small>勾选后先在浏览器里自动翻译成英文再分析（第一次会多下载约 100 MB 翻译模型）。模型是用英文推文训练的，英文原文结果最准。</small></span></label>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="run-btn">开始分析</button>
+      <span id="status" class="status"></span>
+    </div>
+    <div class="progress" id="progress" hidden><div class="bar" id="progress-bar"></div></div>
+  </section>
+
+  <section class="card" id="result-card" hidden>
+    <div class="card-head">
+      <h2><span class="step">2</span>分析结果</h2>
+      <div class="quick">
+        <button class="ghost" id="csv-btn">下载表格 CSV</button>
+        <button class="ghost" id="json-btn">下载完整结果 JSON</button>
+      </div>
+    </div>
+
+    <div class="verdict">
+      <div class="gauge" id="gauge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" class="g-bg"/><circle cx="60" cy="60" r="50" class="g-fg" id="gauge-arc"/></svg>
+        <div class="g-num"><b id="prob">--</b><span>谣言可能性</span></div></div>
+      <div class="verdict-text">
+        <div class="decision" id="decision">--</div>
+        <p id="votes"></p>
+        <p id="src-emotion"></p>
+        <p class="note">结果来自论文中训练的 15 个 ECHO 模型（5 个事件 × 3 个随机种子）。每个模型按自己的阈值投票，超过半数判为谣言就显示"较像谣言"。这是研究原型，结果只能作参考，不能代替事实核查。</p>
+      </div>
+    </div>
+
+    <h3>回复树（颜色＝主要情绪，线越粗＝这条回复越受上一条影响）</h3>
+    <div class="tree-box"><svg id="tree"></svg></div>
+    <div class="legend" id="legend"></div>
+
+    <h3>每条帖子的情况</h3>
+    <div class="table-box"><table id="post-table"><thead><tr>
+      <th>编号</th><th>内容</th><th>主要情绪</th><th>情绪分布</th><th>最受谁影响</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="card faq">
+    <h2>常见问题</h2>
+    <details><summary>ECHO 是什么？</summary><p>ECHO 是一个情绪传染图网络。它把一条帖子和下面的回复看成一棵树，先识别每条帖子的 7 种情绪（愤怒、厌恶、恐惧、喜悦、悲伤、惊讶、中性），再根据"情绪是否相近"和"回复隔了多久"来计算每条回复受前面哪条帖子影响最大，最后综合整棵树判断它像不像谣言。模型在公开数据集 PHEME 上训练。</p></details>
+    <details><summary>"回复给"和"时间"怎么填？</summary><p>"回复给"选这条回复是回复哪一条的，直接回复原帖就选"原帖"。时间填"原帖发出后多少分钟"，不知道可以空着，网站会按每条间隔 5 分钟处理。</p></details>
+    <details><summary>为什么第一次很慢？</summary><p>第一次要从 Hugging Face 下载情绪识别模型和句向量模型，下载完浏览器会缓存，下次打开就快了。建议用电脑上的 Chrome 或 Edge。</p></details>
+    <details><summary>和桌面版预测工具结果一样吗？</summary><p>算法和 15 个模型完全相同。网页版为了能在浏览器里运行，用了压缩过的情绪模型，所以概率可能和桌面版差几个百分点，结论通常一致。</p></details>
+  </section>
+</main>
+
+<footer class="wrap foot">ECHO 研究原型 · 所有计算在本地浏览器完成</footer>
+
+<template id="reply-tpl">
+  <div class="post reply">
+    <div class="post-label">
+      <span class="badge num"></span>
+      <label class="inline">回复给 <select class="parent"></select></label>
+      <label class="inline">原帖后 <input type="number" class="minutes" min="0" step="1" placeholder="自动"> 分钟</label>
+      <button class="del" title="删除这条回复">✕</button>
+    </div>
+    <textarea class="text" rows="2" placeholder="回复内容"></textarea>
+  </div>
+</template>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
